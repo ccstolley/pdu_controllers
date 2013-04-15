@@ -7,9 +7,11 @@ import httplib
 import base64
 from lxml.html.clean import clean_html
 from lxml.html import fromstring as parse_html
+from pysnmp.entity.rfc3413.oneliner import cmdgen
+
 
 PDU_PWD = base64.b64encode('admn:admn')
-PDU_HOST = 'host.domain.com'
+PDU_HOST = 'pdu1.colinstolley.com'
 PDU_PORT = '80'
 
 
@@ -97,8 +99,48 @@ def get_sensor_status():
                        '/html/body/div/div/table[2]/tr[5]/td[5]/font/b/font/b')
     hum2 = parse_value(tree,
                        '/html/body/div/div/table[2]/tr[6]/td[5]/font/b/font/b')
+    hum1 = hum1.replace(' %', '')
+    hum2 = hum2.replace(' %', '')
+    temp1 = temp1.replace(' Deg. F', '')
+    temp2 = temp2.replace(' Deg. F', '')
     res = [{'id': id1, 'label': lab1, 'temp': temp1, 'hum': hum1},
            {'id': id2, 'label': lab2, 'temp': temp2, 'hum': hum2}, ]
+    return res
+
+
+def status_snmp(host='pdu1'):
+    (errorIndication, errorStatus, errorIndex, varBinds) = r
+    r = cmdgen.CommandGenerator().getCmd(
+      cmdgen.CommunityData('test-agent', 'public'),
+      cmdgen.UdpTransportTarget(('pdu1', 161)),
+      # Outlet 1
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 3, 1, 2, 1, 1, 1),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 3, 1, 3, 1, 1, 1),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 3, 1, 5, 1, 1, 1),
+      # Outlet 2
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 3, 1, 2, 1, 1, 2),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 3, 1, 3, 1, 1, 2),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 3, 1, 5, 1, 1, 2),
+      # Sensor 1
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 2, 1, 1),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 3, 1, 1),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 6, 1, 1),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 10, 1, 1),
+      # Sensor 2
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 2, 1, 2),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 3, 1, 2),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 6, 1, 2),
+      (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 10, 1, 2), )
+
+    v = [str(x[1]) for x in varBinds]
+
+    res = {'outlets': [{'id': v[0], 'label': v[1], 'status': v[2]},
+                       {'id': v[3], 'label': v[4], 'status': v[5]}, ],
+           'sensors': [{'id': v[6], 'label': v[7],
+                        'temp': float(v[8])/10.0, 'hum': v[9]},
+                       {'id': v[10],
+                        'label': v[11],
+                        'temp': float(v[12]) / 10.0, 'hum': v[13]}, ]}
     return res
 
 
@@ -123,14 +165,17 @@ def get_outlet_status():
             {'id': id2, 'label': lab2, 'status': stat2}, ]
 
 
-def get_status():
+def get_status(use_snmp=False):
     """
     Returns a dictionary containing all outlet and sensor statues.
     """
-    stat = {}
-    stat['outlets'] = get_outlet_status()
-    stat['sensors'] = get_sensor_status()
-    return stat
+    if use_snmp:
+        return status_snmp()
+    else:
+        stat = {}
+        stat['outlets'] = get_outlet_status()
+        stat['sensors'] = get_sensor_status()
+        return stat
 
 
 def safe_outlet_off(number):
@@ -168,14 +213,19 @@ if __name__ == '__main__':
         num = int(sys.argv[2])
         safe_outlet_off(num)
     elif cmd == 'status':
-        t = get_status()
+        use_snmp = False
+        if len(sys.argv) > 2 and sys.argv[2] == '-s':
+            use_snmp = True
+        t = get_status(use_snmp=use_snmp)
         for out in t['outlets']:
             print "%s: %s" % (out['label'], out['status'])
         for sen in t['sensors']:
             if sen['temp'] == 'Not Found':
                 pass
             else:
-                print "%s: %s (%s)" % (sen['label'], sen['temp'], sen['hum'])
+                print "%s: %s deg F (%s %%)" % (sen['label'],
+                                                sen['temp'],
+                                                sen['hum'])
     else:
         print ("usage: %s [status] [on|off <num>]" %
                os.path.basename(sys.argv[0]))
