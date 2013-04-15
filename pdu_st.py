@@ -108,11 +108,11 @@ def get_sensor_status():
     return res
 
 
-def status_snmp(host='pdu1'):
+def status_snmp(host=PDU_HOST):
     (errorIndication, errorStatus, errorIndex, varBinds) = r
     r = cmdgen.CommandGenerator().getCmd(
       cmdgen.CommunityData('test-agent', 'public'),
-      cmdgen.UdpTransportTarget(('pdu1', 161)),
+      cmdgen.UdpTransportTarget((host, 161)),
       # Outlet 1
       (1, 3, 6, 1, 4, 1, 1718, 3, 2, 3, 1, 2, 1, 1, 1),
       (1, 3, 6, 1, 4, 1, 1718, 3, 2, 3, 1, 3, 1, 1, 1),
@@ -131,9 +131,7 @@ def status_snmp(host='pdu1'):
       (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 3, 1, 2),
       (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 6, 1, 2),
       (1, 3, 6, 1, 4, 1, 1718, 3, 2, 5, 1, 10, 1, 2), )
-
     v = [str(x[1]) for x in varBinds]
-
     res = {'outlets': [{'id': v[0], 'label': v[1], 'status': v[2]},
                        {'id': v[3], 'label': v[4], 'status': v[5]}, ],
            'sensors': [{'id': v[6], 'label': v[7],
